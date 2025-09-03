@@ -1,4 +1,4 @@
-from conf import TRACING_PLUS_CONFIG
+from conf import TRACING_CONFIG
 
 
 if TRACING_PLUS_CONFIG.get("sql"):

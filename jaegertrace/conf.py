@@ -5,52 +5,53 @@ from django.conf import settings
 if not settings.configured:
     settings.configure()
 
-SAMPLE_TYPE = 'const'
-if hasattr(settings, 'TRACE_SAMPLE_TYPE'):
-    SAMPLE_TYPE = settings.TRACE_SAMPLE_TYPE
-
-SAMPLE_PARAM = 1
-if hasattr(settings, 'TRACE_SAMPLE_PARAM'):
-    SAMPLE_PARAM = settings.TRACE_SAMPLE_PARAM
-
-TRACE_ID_HEADER = 'trace-id'
-if hasattr(settings, 'TRACE_ID_HEADER'):
-    TRACE_ID_HEADER = settings.TRACE_ID_HEADER
-
-BAGGAGE_HEADER_PREFIX = 'jaegertrace-'
-if hasattr(settings, 'TRACE_BAGGAGE_HEADER_PREFIX'):
-    BAGGAGE_HEADER_PREFIX = settings.TRACE_BAGGAGE_HEADER_PREFIX
-
-if not hasattr(settings, 'TRACE_SERVICE_NAME'):
-    settings.TRACE_SERVICE_NAME = settings.WSGI_APPLICATION.split(".")[0]
-
-REPORTING_HOST = 'localhost'
-if hasattr(settings, 'JAEGER_REPORTING_HOST'):
-    REPORTING_HOST = settings.JAEGER_REPORTING_HOST
-
-TRACE_CONFIG = {
+# tracer config
+DEFAULT_TRACER_CONFIG = {
     'sampler': {
-        'type': SAMPLE_TYPE,
-        'param': SAMPLE_PARAM,
+        'type': 'const',
+        'param': 1,
     },
     'local_agent': {
-        'reporting_host': REPORTING_HOST,
+        'reporting_host': 'localhost',
+        'reporting_port': '5775',
     },
-    'trace_id_header': TRACE_ID_HEADER,
-    'baggage_header_prefix': BAGGAGE_HEADER_PREFIX,
+    'trace_id_header': 'trace-id',
+    'baggage_header_prefix': 'jaegertrace-',
 }
+TRACER_CONFIG = getattr(settings, 'TRACER_CONFIG', DEFAULT_TRACER_CONFIG)  # type: dict
 
-TRACING_PLUS_CONFIG = getattr(settings, "TRACING_CONFIG", {})  # type: dict
 
+# tracing config
+DEFAULT_TRACING_CONFIG = {}
 """
-example：
+example:
 
 TRACING_CONFIG = {
-    "sql": True,
-    "redis": True,
-    "celery": True,
-    "mongo": True,
-    "mns": True,
-    "rocketmq": True,
+    "http_requests": {
+        "enabled": True,
+        "trace_headers": True,
+        "ignore_urls": ["/health", "/metrics"]
+    },
+    "database": {
+        "enabled": True,
+        "slow_query_threshold": 100,  # ms
+        "log_sql": True
+    },
+    "redis": {
+        "enabled": True,
+        "log_commands": ["GET", "SET", "HGET", "HSET"],
+        "ignore_commands": ["PING"]
+    },
+    "celery": {
+        "enabled": True,
+        "trace_task_args": False,  # 是否追踪任务参数
+        "trace_result": False
+    },
+    "rocketmq": {
+        "enabled": True,
+        "trace_message_body": False,
+        "max_message_size": 1024
+    }
 }
 """
+TRACING_CONFIG = getattr(settings, "TRACING_CONFIG", DEFAULT_TRACING_CONFIG)  # type: dict
