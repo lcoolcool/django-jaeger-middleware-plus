@@ -17,6 +17,7 @@ from urllib3.util import parse_url
 
 
 from initial_tracer import initialize_global_tracer
+from jaegertrace.conf import is_component_enabled
 from request_context import get_current_span
 
 logger = logging.getLogger(__name__)
@@ -28,6 +29,9 @@ def before_http_request(request):
     :type request: Request.request
     :return: returns child tracing span encapsulating this request
     """
+    if not is_component_enabled("http_requests"):
+        return
+
     tracer = initialize_global_tracer()
     parent_span = get_current_span()
     scheme, auth, host, port, path, query, fragment = parse_url(request.url)
