@@ -8,7 +8,7 @@ from django.utils.deprecation import MiddlewareMixin
 from opentracing import Format
 from opentracing.ext import tags
 from .conf import *
-from request_context import get_current_span, span_in_context, span_out_context
+from .request_context import get_current_span, span_in_context, span_out_context
 
 logger = logging.getLogger(__name__)
 

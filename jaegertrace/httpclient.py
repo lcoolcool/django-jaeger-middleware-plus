@@ -16,9 +16,9 @@ from requests.adapters import HTTPAdapter
 from urllib3.util import parse_url
 
 
-from initial_tracer import initialize_global_tracer
-from jaegertrace.conf import is_component_enabled
-from request_context import get_current_span
+from .initial_tracer import initialize_global_tracer
+from .conf import is_component_enabled, get_service_name
+from .request_context import get_current_span
 
 logger = logging.getLogger(__name__)
 
@@ -127,7 +127,7 @@ class HttpClient:
                     status_code=response.status_code,
                     reason=response.reason,
                     res_content=response.json(),
-                    service_name=settings.SERVICE_NAME
+                    service_name=get_service_name()
                 ),
             )
         except Exception as e:

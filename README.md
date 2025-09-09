@@ -4,6 +4,8 @@ A comprehensive Django middleware package for distributed tracing with Jaeger, s
 
 I read Jaeger - Distributed Tracing System on [github](https://github.com/jaegertracing/jaeger-client-python) and make it plus.
 
+[![Pypi Version](https://badge.fury.io/py/django-nacos-microservice.svg)](https://badge.fury.io/py/django-jaeger-middleware-plus)
+
 ## Features
 
 - **HTTP Request Tracing**: Automatic tracing of incoming HTTP requests and outgoing HTTP calls
@@ -134,29 +136,3 @@ TRACER_CONFIG = {
    - Tune slow query thresholds
    - Disable non-essential component tracing
    - Use asynchronous reporting
-
-### Debug Mode
-
-Enable debug logging to troubleshoot issues:
-
-```python
-LOGGING = {
-    'loggers': {
-        'jaegertrace': {
-            'handlers': ['console'],
-            'level': 'DEBUG',
-            'propagate': False,
-        },
-    },
-}
-```
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## Changelog
-
-### Version 0.0.1
-- Initial release
-- HTTP request tracing
