@@ -43,6 +43,7 @@ def before_http_request(request):
     span.set_tag(tags.SPAN_KIND, tags.SPAN_KIND_RPC_CLIENT)
     span.set_tag(tags.HTTP_URL, request.url)
     span.set_tag(tags.HTTP_METHOD, request.method)
+    span.set_tag(tags.COMPONENT, 'requests')
     if host:
         span.set_tag(tags.PEER_HOST_IPV4, host)
     if port:
@@ -62,7 +63,11 @@ def before_http_request(request):
     return span
 
 
-class HttpClient(object):
+class HttpClient:
+    """
+    HTTP client with built-in tracing support.
+    Drop-in replacement for requests with automatic tracing.
+    """
     _headers = {
         'Content-Type': 'application/json',
     }
@@ -111,7 +116,6 @@ class HttpClient(object):
 
     def _check_response(self, response):
         try:
-
             duration = int((time.time() - self._start) * 1000)
             body = json.dumps(response.request.body.decode()) if isinstance(response.request.body, bytes) else '-'
             logger.info(

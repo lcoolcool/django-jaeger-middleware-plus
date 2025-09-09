@@ -7,7 +7,7 @@ import urllib
 from django.utils.deprecation import MiddlewareMixin
 from opentracing import Format
 from opentracing.ext import tags
-from .conf import get_tracing_config, get_tracer_config, is_component_enabled
+from .conf import *
 from request_context import get_current_span, span_in_context, span_out_context
 
 logger = logging.getLogger(__name__)
@@ -137,6 +137,7 @@ class TraceMiddleware(MiddlewareMixin):
             tags.SPAN_KIND: tags.SPAN_KIND_RPC_SERVER,
             tags.HTTP_URL: request.full_url,
             tags.HTTP_METHOD: request.method,
+            tags.COMPONENT: get_service_name() or "django"
         }
 
         remote_ip = request.environ.get('REMOTE_ADDR')

@@ -3,6 +3,13 @@
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
 
+__all__ = [
+    "get_tracer_config",
+    "get_tracing_config",
+    "get_service_name",
+    "is_component_enabled",
+]
+
 
 # Default tracer configuration for Jaeger
 DEFAULT_TRACER_CONFIG = {
