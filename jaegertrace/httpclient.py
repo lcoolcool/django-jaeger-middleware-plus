@@ -8,7 +8,6 @@ import opentracing
 import requests
 import time
 
-from django.conf import settings
 from opentracing import Format
 from opentracing.ext import tags
 from requests import HTTPError

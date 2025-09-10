@@ -19,6 +19,10 @@ DEFAULT_TRACER_CONFIG = {
         'type': 'const',
         'param': 1,
     },
+    'local_agent': {
+        'reporting_host': 'localhost',
+        'reporting_port': 6831,
+    },
     'trace_id_header': 'trace-id',
     'baggage_header_prefix': 'jaegertrace-',
     "logging": True,
@@ -86,7 +90,6 @@ def get_tracing_config() -> dict:
 
 def get_service_name() -> str:
     """Get service name for tracing."""
-    return "test_service_name"
     service_name = getattr(settings, "TRACING_SERVICE_NAME", None)
     if not service_name:
         # Try to get from other common settings
