@@ -1,65 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-
-import json
 import logging
-
-import opentracing
 import requests
-import time
 
-from opentracing import Format
-from opentracing.ext import tags
-from requests import HTTPError
-from requests.adapters import HTTPAdapter
-from urllib3.util import parse_url
-
-
-from .initial_tracer import initialize_global_tracer
-from .conf import is_component_enabled, get_service_name
-from .request_context import get_current_span
+from .conf import is_component_enabled
+from .instrumentation.http import TracingHTTPAdapter
 
 logger = logging.getLogger(__name__)
-
-
-def before_http_request(request):
-    """
-    :param request:
-    :type request: Request.request
-    :return: returns child tracing span encapsulating this request
-    """
-    if not is_component_enabled("http_requests"):
-        return
-
-    tracer = initialize_global_tracer()
-    parent_span = get_current_span()
-    scheme, auth, host, port, path, query, fragment = parse_url(request.url)
-    operation_name = '{} {}'.format(request.method, path)
-    span = tracer.start_span(
-        operation_name=operation_name,
-        child_of=parent_span
-    )
-    span.set_tag(tags.SPAN_KIND, tags.SPAN_KIND_RPC_CLIENT)
-    span.set_tag(tags.HTTP_URL, request.url)
-    span.set_tag(tags.HTTP_METHOD, request.method)
-    span.set_tag(tags.COMPONENT, 'requests')
-    if host:
-        span.set_tag(tags.PEER_HOST_IPV4, host)
-    if port:
-        span.set_tag(tags.PEER_PORT, port)
-
-    carrier = {}
-    try:
-        tracer.inject(
-            span_context=span.context,
-            format=Format.HTTP_HEADERS,
-            carrier=carrier
-        )
-        for key, value in carrier.items():
-            request.headers.update({key: value})
-    except opentracing.UnsupportedFormatException:
-        pass
-    return span
 
 
 class HttpClient:
@@ -67,74 +14,78 @@ class HttpClient:
     HTTP client with built-in tracing support.
     Drop-in replacement for requests with automatic tracing.
     """
-    _headers = {
-        'Content-Type': 'application/json',
-    }
-    _start = None
 
-    def __init__(self, url, data=None, headers=_headers, retry=0, timeout=10):
-        self.url = url
-        self.data = data
-        self.headers = headers
-        self.retry = retry
+    def __init__(self, base_url: str = None, headers: dict = None, timeout: int = 10, retry: int = 0):
+        self.base_url = base_url
+        self.default_headers = headers or {}
         self.timeout = timeout
+        self.retry = retry
+        self.session = requests.Session()
 
-    def handle_request(self, method='GET', params=None, data=None, **kwargs):
-        req = requests.Request(method=method, url=self.url, headers=self.headers, params=params, data=data, **kwargs)
-        request = req.prepare()
-        span = before_http_request(request)
-        session = requests.session()
-        adapter = HTTPAdapter(max_retries=self.retry)
-        session.mount('http://', adapter)
-        session.mount('https://', adapter)
-        response = session.send(request, timeout=self.timeout)
-        if response and span:
-            span.set_tag(tags.HTTP_STATUS_CODE, response.status_code)
-            span.finish()
-        return response
+        # Install tracing adapter
+        if is_component_enabled("http_requests"):
+            adapter = TracingHTTPAdapter(retry=self.retry)
+            self.session.mount('http://', adapter)
+            self.session.mount('https://', adapter)
 
-    def get(self, **kwargs):
-        self._start = time.time()
-        response = self.handle_request(method='GET', params=self.data, **kwargs)
-        return self._check_response(response)
+    def _prepare_url(self, url: str) -> str:
+        """Prepare URL with base URL if needed."""
+        if self.base_url and not url.startswith(('http://', 'https://')):
+            return f"{self.base_url.rstrip('/')}/{url.lstrip('/')}"
+        return url
 
-    def post(self, **kwargs):
-        self._start = time.time()
-        response = self.handle_request(method='POST', data=self.data, **kwargs)
-        return self._check_response(response)
+    def _prepare_headers(self, headers: dict = None) -> dict:
+        """Merge default headers with request headers."""
+        merged_headers = self.default_headers.copy()
+        if headers:
+            merged_headers.update(headers)
+        return merged_headers
 
-    def patch(self, **kwargs):
-        self._start = time.time()
-        response = self.handle_request(method='PATCH', data=self.data, **kwargs)
-        return self._check_response(response)
+    def get(self, url: str, params=None, headers=None, **kwargs):
+        """Make GET request with tracing."""
+        return self.session.get(
+            self._prepare_url(url),
+            params=params,
+            headers=self._prepare_headers(headers),
+            timeout=kwargs.get('timeout', self.timeout),
+            **kwargs
+        )
 
-    def delete(self, **kwargs):
-        self._start = time.time()
-        response = self.handle_request(method='DELETE', params=self.data, **kwargs)
-        return self._check_response(response)
+    def post(self, url: str, data=None, headers=None, **kwargs):
+        """Make POST request with tracing."""
+        return self.session.post(
+            self._prepare_url(url),
+            data=data,
+            headers=self._prepare_headers(headers),
+            timeout=kwargs.get('timeout', self.timeout),
+            **kwargs
+        )
 
-    def _check_response(self, response):
-        try:
-            duration = int((time.time() - self._start) * 1000)
-            body = json.dumps(response.request.body.decode()) if isinstance(response.request.body, bytes) else '-'
-            logger.info(
-                '{method} {duration} {url} ${body}$ {status_code} "{reason}" ${res_content}$ {service_name}'.format(
-                    method=response.request.method,
-                    duration=duration,
-                    url=response.request.url,
-                    body=body,
-                    status_code=response.status_code,
-                    reason=response.reason,
-                    res_content=response.json(),
-                    service_name=get_service_name()
-                ),
-            )
-        except Exception as e:
-            logger.error(e)
-        if response.status_code != 200:
-            raise ServiceError(response.text, response=response)
-        return response
+    def put(self, url: str, data=None, headers=None, **kwargs):
+        """Make PUT request with tracing."""
+        return self.session.put(
+            self._prepare_url(url),
+            data=data,
+            headers=self._prepare_headers(headers),
+            timeout=kwargs.get('timeout', self.timeout),
+            **kwargs
+        )
 
+    def patch(self, url: str, data=None, headers=None, **kwargs):
+        """Make PATCH request with tracing."""
+        return self.session.patch(
+            self._prepare_url(url),
+            data=data,
+            headers=self._prepare_headers(headers),
+            timeout=kwargs.get('timeout', self.timeout),
+            **kwargs
+        )
 
-class ServiceError(HTTPError):
-    """requests错误"""
+    def delete(self, url: str, headers=None, **kwargs):
+        """Make DELETE request with tracing."""
+        return self.session.delete(
+            self._prepare_url(url),
+            headers=self._prepare_headers(headers),
+            timeout=kwargs.get('timeout', self.timeout),
+            **kwargs
+        )

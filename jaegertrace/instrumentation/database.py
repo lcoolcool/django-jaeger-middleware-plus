@@ -23,43 +23,21 @@ class TracingCursorWrapper(CursorWrapper):
         self._tracer = initialize_global_tracer()
         self._config = get_tracing_config().get("database", {})
 
-    def _should_trace_query(self, sql: str) -> bool:
-        """Determine if the query should be traced."""
+    def _should_ignore(self, sql: str) -> bool:
+        """Check if the query should be ignored based on configuration."""
         if not is_component_enabled("database"):
-            return False
+            return True
 
-        # Skip certain system queries
-        skip_patterns = [
-            "SELECT 1",
-            "SHOW TABLES",
-            "DESCRIBE ",
-            "information_schema",
-            "pg_",
-        ]
+        ignore_sqls = self._config.get("ignore_sqls", [])
 
-        return not any(pattern in sql.upper() for pattern in skip_patterns)
-
-    # def _create_operation_name(self, sql: str) -> str:
-    #     """Create operation name from SQL query."""
-    #     # Extract the first word (operation type)
-    #     operation = sql.strip().split()[0].upper()
-    #
-    #     # Add table name if possible
-    #     if operation in ("SELECT", "INSERT", "UPDATE", "DELETE"):
-    #         words = sql.strip().split()
-    #         for i, word in enumerate(words):
-    #             if word.upper() in ("FROM", "INTO", "UPDATE"):
-    #                 if i + 1 < len(words):
-    #                     table_name = words[i + 1].strip('`"[]')
-    #                     return f"{operation} {table_name}"
-    #
-    #     return operation
+        return any(
+            ignore_sql in sql.upper()
+            for ignore_sql in ignore_sqls
+        )
 
     def _create_span(self, sql: str, params=None):
         """Create tracing span for database query."""
         parent_span = get_current_span()
-
-        # operation_name = _create_operation_name(sql)
         operation_name = "DB_QUERY"
 
         span = self._tracer.start_span(
@@ -71,28 +49,21 @@ class TracingCursorWrapper(CursorWrapper):
         span.set_tag(tags.SPAN_KIND, tags.SPAN_KIND_RPC_CLIENT)
         span.set_tag(tags.COMPONENT, "django.db")
         span.set_tag(tags.DATABASE_TYPE, self.db.vendor)
-        span.set_tag("db.name", self.db.settings_dict.get("NAME", ""))
-        span.set_tag("db.user", self.db.settings_dict.get("USER", ""))
-
-        # Add host information if available
-        host = self.db.settings_dict.get("HOST")
-        if host:
-            span.set_tag(tags.PEER_HOST_IPV4, host)
-
-        port = self.db.settings_dict.get("PORT")
-        if port:
-            span.set_tag(tags.PEER_PORT, port)
+        span.set_tag(tags.DATABASE_INSTANCE, self.db.settings_dict.get("NAME", ""))
+        span.set_tag(tags.DATABASE_USER, self.db.settings_dict.get("USER", ""))
+        span.set_tag(tags.PEER_HOST_IPV4, self.db.settings_dict.get("HOST", ""))
+        span.set_tag(tags.PEER_PORT, self.db.settings_dict.get("PORT", ""))
 
         # Add SQL statement (optionally truncated)
         if self._config.get("log_sql", False):
             max_length = self._config.get("max_query_length", 1000)
-            span.set_tag("db.statement", sql[:max_length])
+            span.set_tag(tags.DATABASE_STATEMENT, sql[:max_length])
 
         return span
 
     def execute(self, sql, params=None):
         """Execute SQL with tracing."""
-        if not self._should_trace_query(sql):
+        if self._should_ignore(sql):
             return super().execute(sql, params)
 
         span = self._create_span(sql, params)
@@ -135,8 +106,8 @@ class TracingCursorWrapper(CursorWrapper):
 
     def executemany(self, sql, param_list):
         """Execute many SQL statements with tracing."""
-        if not self._should_trace_query(sql):
-            return super().executemany(sql, param_list)
+        if self._should_ignore(sql):
+            return super().execute(sql, param_list)
 
         span = self._create_span(sql, param_list)
         start_time = time.time()
@@ -147,7 +118,6 @@ class TracingCursorWrapper(CursorWrapper):
             # Calculate query duration
             duration_ms = (time.time() - start_time) * 1000
             span.set_tag("db.duration_ms", round(duration_ms, 2))
-            span.set_tag("db.batch_size", len(param_list))
 
             # Add row count if available
             if hasattr(self.cursor, "rowcount") and self.cursor.rowcount >= 0:
@@ -171,8 +141,6 @@ class TracingCursorWrapper(CursorWrapper):
 class DatabaseInstrumentation:
     """Database instrumentation manager."""
 
-    _original_make_cursor = None
-
     @classmethod
     def install(cls):
         """Install database instrumentation."""
@@ -181,9 +149,6 @@ class DatabaseInstrumentation:
 
         from django.db.backends.base.base import BaseDatabaseWrapper
 
-        # Store original method
-        cls._original_make_cursor = BaseDatabaseWrapper.make_cursor
-
         def traced_make_cursor(self, cursor):
             """Create traced cursor wrapper."""
             return TracingCursorWrapper(cursor, self)
@@ -191,11 +156,3 @@ class DatabaseInstrumentation:
         # Monkey patch the make_cursor method
         BaseDatabaseWrapper.make_cursor = traced_make_cursor
         logger.info("Database instrumentation installed")
-
-    @classmethod
-    def uninstall(cls):
-        """Uninstall database instrumentation."""
-        if cls._original_make_cursor:
-            from django.db.backends.base.base import BaseDatabaseWrapper
-            BaseDatabaseWrapper.make_cursor = cls._original_make_cursor
-            logger.info("Database instrumentation uninstalled")

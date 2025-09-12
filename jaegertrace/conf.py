@@ -39,12 +39,13 @@ DEFAULT_TRACING_CONFIG = {
     "database": {
         "enabled": True,
         "slow_query_threshold": 100,  # milliseconds
-        "log_sql": False,
+        "log_sql": True,
+        "ignore_sqls": ["SHOW TABLES", "DESCRIBE"],
         "max_query_length": 1000,
     },
     "redis": {
         "enabled": True,
-        "log_commands": ["GET", "SET", "HGET", "HSET", "MGET", "MSET"],
+        "log_command": True,
         "ignore_commands": ["PING", "INFO"],
         "max_value_length": 500,
     },
@@ -57,8 +58,8 @@ DEFAULT_TRACING_CONFIG = {
     "rocketmq": {
         "enabled": True,
         "trace_message_body": False,
-        "max_message_size": 1024,
         "ignore_topics": [],
+        "max_message_size": 1024,
     },
 }
 

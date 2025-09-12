@@ -4,7 +4,6 @@ Automatically traces Redis commands with performance metrics.
 """
 import logging
 import time
-from typing import Any, List, Optional
 
 from opentracing.ext import tags
 
@@ -58,7 +57,7 @@ class TracingRedisConnection:
         span.set_tag(tags.SPAN_KIND, tags.SPAN_KIND_RPC_CLIENT)
         span.set_tag(tags.COMPONENT, "redis")
         span.set_tag(tags.DATABASE_TYPE, "redis")
-        span.set_tag("db.redis.command", command_name.upper())
+        span.set_tag(tags.DATABASE_STATEMENT, command_name.upper())
 
         # Add connection information
         connection_kwargs = getattr(self._connection, "connection_kwargs", {})
@@ -81,21 +80,21 @@ class TracingRedisConnection:
 
         return span
 
-    def execute_command(self, *args, **kwargs):
+    def send_command(self, *args, **kwargs):
         """Execute Redis command with tracing."""
         if not args:
-            return self._connection.execute_command(*args, **kwargs)
+            return self._connection.send_command(*args, **kwargs)
 
         command_name = str(args[0])
 
         if not self._should_trace_command(command_name):
-            return self._connection.execute_command(*args, **kwargs)
+            return self._connection.send_command(*args, **kwargs)
 
         span = self._create_span(command_name, args[1:])
         start_time = time.time()
 
         try:
-            result = self._connection.execute_command(*args, **kwargs)
+            result = self._connection.send_command(*args, **kwargs)
 
             # Calculate command duration
             duration_ms = (time.time() - start_time) * 1000
@@ -128,7 +127,6 @@ class TracingRedisConnection:
 class RedisInstrumentation:
     """Redis instrumentation manager."""
 
-    _original_connection_class = None
 
     @classmethod
     def install(cls):
@@ -140,46 +138,17 @@ class RedisInstrumentation:
             import redis
             from redis.connection import Connection
 
-            # Store original connection class
-            cls._original_connection_class = Connection
+            # Monkey patch requests Session to use tracing adapter
+            original_connection_send_command = Connection.send_command
 
-            class TracedConnection(Connection):
-                """Redis connection with tracing support."""
+            def enabled_tracing(func):
+                """Create traced send_command wrapper."""
+                def wrapper(*args, **kwargs):
+                    span_processor()
+                    return func(*args, **kwargs)
+                return wrapper
 
-                def __init__(self, *args, **kwargs):
-                    super().__init__(*args, **kwargs)
-                    self._tracing_wrapper = None
-
-                def connect(self):
-                    """Connect and wrap with tracing."""
-                    result = super().connect()
-                    if not self._tracing_wrapper:
-                        self._tracing_wrapper = TracingRedisConnection(self)
-                    return result
-
-                def execute_command(self, *args, **kwargs):
-                    """Execute command with tracing."""
-                    if self._tracing_wrapper:
-                        return self._tracing_wrapper.execute_command(*args, **kwargs)
-                    return super().execute_command(*args, **kwargs)
-
-            # Replace Redis connection class
-            redis.connection.Connection = TracedConnection
-            redis.Connection = TracedConnection
-
+            Connection.send_command = enabled_tracing(original_connection_send_command)
             logger.info("Redis instrumentation installed")
-
         except ImportError:
             logger.warning("Redis package not found, skipping Redis instrumentation")
-
-    @classmethod
-    def uninstall(cls):
-        """Uninstall Redis instrumentation."""
-        if cls._original_connection_class:
-            try:
-                import redis
-                redis.connection.Connection = cls._original_connection_class
-                redis.Connection = cls._original_connection_class
-                logger.info("Redis instrumentation uninstalled")
-            except ImportError:
-                pass
