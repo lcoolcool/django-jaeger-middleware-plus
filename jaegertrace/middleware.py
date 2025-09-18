@@ -92,21 +92,6 @@ class TraceMiddleware(MiddlewareMixin):
             url += '?' + environ['QUERY_STRING']
         setattr(request, 'full_url', url)
 
-    def _inject_headers(self, request, span):
-        """Inject tracing headers into request."""
-        if not self._http_config.get("trace_headers", True):
-            return
-
-        carrier = request.META
-        try:
-            self._tracer.inject(
-                span_context=span.context,
-                format=Format.HTTP_HEADERS,
-                carrier=carrier
-            )
-        except Exception as e:
-            logger.debug(f"Failed to inject tracing headers: {e}")
-
     def process_request(self, request):
         """
         Process incoming HTTP request and start tracing span.

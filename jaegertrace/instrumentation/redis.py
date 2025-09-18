@@ -7,6 +7,7 @@ import time
 
 from opentracing.ext import tags
 
+from . import enabled_tracing
 from ..conf import is_component_enabled, get_tracing_config
 from ..initial_tracer import initialize_global_tracer
 from ..request_context import get_current_span
@@ -131,22 +132,12 @@ class RedisInstrumentation:
     @classmethod
     def install(cls):
         """Install Redis instrumentation."""
-        if not is_component_enabled("redis"):
-            return
-
         try:
             import redis
             from redis.connection import Connection
 
             # Monkey patch requests Session to use tracing adapter
             original_connection_send_command = Connection.send_command
-
-            def enabled_tracing(func):
-                """Create traced send_command wrapper."""
-                def wrapper(*args, **kwargs):
-                    span_processor()
-                    return func(*args, **kwargs)
-                return wrapper
 
             Connection.send_command = enabled_tracing(original_connection_send_command)
             logger.info("Redis instrumentation installed")
