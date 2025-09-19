@@ -44,19 +44,6 @@ MIDDLEWARE = [
 TRACING_SERVICE_NAME = "my-django-service"
 ```
 
-### 2. Using the Traced HTTP Client
-
-```python
-from jaegertrace.httpclient import HttpClient
-
-# Create a traced HTTP client
-client = HttpClient(url='http://httpbin.org/get')
-
-# Make requests - automatically traced
-response = client.get("/users/123")
-response = client.post("/users", json={"name": "John"})
-```
-
 ## Configuration Reference
 
 ### Tracer Configuration
@@ -81,15 +68,56 @@ TRACER_CONFIG = {
 ### Component Configuration
 
 ```python
+# settings.py
+
 TRACING_CONFIG = {
     "http_requests": {
         "enabled": True,
-        "trace_headers": True,                    # Inject tracing headers
+        "trace_headers": True,  # Inject tracing headers
         "ignore_urls": ["/health", "/metrics", "/favicon.ico"],  # URLs to skip
-        "max_tag_value_length": 1024,           # Max length for tag values
+        "max_tag_value_length": 1024,  # Max length for tag values, default 1024
+    },
+    "database": {
+        "enabled": True,
+        "slow_query_threshold": 100,  # Milliseconds
+        "log_sql": True,  # Include SQL in spans
+        "ignore_sqls": ["SHOW TABLES", "DESCRIBE"],  # SQL commands to skip, default ["SHOW TABLES", "DESCRIBE"]
+        "max_query_length": 1000,  # Truncate long queries, default 1000
+    },
+    "redis": {
+        "enabled": True,
+        "log_command": True,  # Include command in spans
+        "ignore_commands": ["PING", "INFO"],  # Redis commands to skip
+        "max_command_length": 500,  # Truncate long commands, default 500
+    },
+    "celery": {
+        "enabled": True,
+        "ignore_tasks": [],  # Celery tasks to skip
+    },
+    "rocketmq": {
+        "enabled": True,
+        "trace_message_body": False,  # Include message content
+        "ignore_topics": [],  # RocketMQ topics to skip
     },
 }
 ```
+
+## Usage
+
+### 1. Using the Traced HTTP Client
+
+```python
+from jaegertrace.httpclient import HttpClient
+
+# Create a traced HTTP client
+client = HttpClient()
+
+# Make requests - automatically traced
+response = client.get("/users/123")
+response = client.post("/users", json={"name": "John"})
+
+```
+
 ## Production Considerations
 
 ### Sampling
@@ -136,3 +164,25 @@ TRACER_CONFIG = {
    - Tune slow query thresholds
    - Disable non-essential component tracing
    - Use asynchronous reporting
+
+## Debug Mode
+Enable debug logging to troubleshoot issues:
+```python
+# settings.py
+
+LOGGING = {
+    'loggers': {
+        'django_tracing': {
+            'handlers': ['console'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
+    },
+}
+```
+
+## License
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## Contact
+Email me with any questions: <zhaishuaishuai001@gmail.com>.

@@ -24,7 +24,7 @@ class HttpClient:
 
         # Install tracing adapter
         if is_component_enabled("http_requests"):
-            adapter = TracingHTTPAdapter(retry=self.retry)
+            adapter = TracingHTTPAdapter(max_retries=self.retry)
             self.session.mount('http://', adapter)
             self.session.mount('https://', adapter)
 
@@ -89,3 +89,6 @@ class HttpClient:
             timeout=kwargs.get('timeout', self.timeout),
             **kwargs
         )
+
+
+http_client = HttpClient()
