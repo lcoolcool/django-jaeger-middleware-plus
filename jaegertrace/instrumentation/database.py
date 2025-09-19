@@ -23,7 +23,7 @@ class TracingCursorWrapper(CursorWrapper):
         self._tracer = initialize_global_tracer()
         self._config = get_tracing_config().get("database", {})
 
-    def _should_ignore(self, sql: str) -> bool:
+    def _should_ignore_tracing(self, sql: str) -> bool:
         """Check if the query should be ignored based on configuration."""
         if not is_component_enabled("database"):
             return True
@@ -63,7 +63,7 @@ class TracingCursorWrapper(CursorWrapper):
 
     def execute(self, sql, params=None):
         """Execute SQL with tracing."""
-        if self._should_ignore(sql):
+        if not self._should_ignore(sql):
             return super().execute(sql, params)
 
         span = self._create_span(sql, params)
@@ -72,7 +72,7 @@ class TracingCursorWrapper(CursorWrapper):
         try:
             result = super().execute(sql, params)
 
-            # Calculate query duration
+            # Check for slow queries
             duration_ms = (time.time() - start_time) * 1000
             span.set_tag("db.duration_ms", round(duration_ms, 2))
 
@@ -85,10 +85,6 @@ class TracingCursorWrapper(CursorWrapper):
                     "duration_ms": duration_ms,
                     "threshold_ms": slow_threshold,
                 })
-
-            # Add row count if available
-            if hasattr(self.cursor, "rowcount") and self.cursor.rowcount >= 0:
-                span.set_tag("db.rows_affected", self.cursor.rowcount)
 
             return result
 
@@ -106,7 +102,7 @@ class TracingCursorWrapper(CursorWrapper):
 
     def executemany(self, sql, param_list):
         """Execute many SQL statements with tracing."""
-        if self._should_ignore(sql):
+        if self._should_ignore_tracing(sql):
             return super().execute(sql, param_list)
 
         span = self._create_span(sql, param_list)
@@ -118,10 +114,6 @@ class TracingCursorWrapper(CursorWrapper):
             # Calculate query duration
             duration_ms = (time.time() - start_time) * 1000
             span.set_tag("db.duration_ms", round(duration_ms, 2))
-
-            # Add row count if available
-            if hasattr(self.cursor, "rowcount") and self.cursor.rowcount >= 0:
-                span.set_tag("db.rows_affected", self.cursor.rowcount)
 
             return result
 

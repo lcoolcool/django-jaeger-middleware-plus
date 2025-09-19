@@ -2,10 +2,7 @@
 RocketMQ instrumentation for message queue tracing.
 Automatically traces RocketMQ message production and consumption.
 """
-
 import logging
-import time
-from typing import Any, Dict, Optional
 
 from opentracing import Format
 from opentracing.ext import tags
@@ -20,12 +17,10 @@ logger = logging.getLogger(__name__)
 class RocketMQInstrumentation:
     """RocketMQ instrumentation manager."""
 
-    _installed = False
-
     @classmethod
     def install(cls):
         """Install RocketMQ instrumentation."""
-        if cls._installed or not is_component_enabled("rocketmq"):
+        if not is_component_enabled("rocketmq"):
             return
 
         try:
@@ -38,46 +33,31 @@ class RocketMQInstrumentation:
             # Monkey patch PushConsumer
             cls._patch_consumer(PushConsumer)
 
-            cls._installed = True
             logger.info("RocketMQ instrumentation installed")
 
         except ImportError:
             logger.warning("RocketMQ package not found, skipping RocketMQ instrumentation")
 
     @classmethod
-    def _should_trace_topic(cls, topic: str) -> bool:
+    def _should_ignore_tracing(cls, topic: str) -> bool:
         """Determine if topic should be traced."""
+        if not is_component_enabled("rocketmq"):
+            return True
+
         config = get_tracing_config().get("rocketmq", {})
         ignore_topics = config.get("ignore_topics", [])
+
         return topic not in ignore_topics
 
     @classmethod
     def _patch_producer(cls, producer_class):
         """Patch RocketMQ Producer class."""
         original_send_sync = producer_class.send_sync
-        original_send_async = producer_class.send_async
         original_send_oneway = producer_class.send_oneway
 
         def traced_send_sync(self, msg, timeout=3000):
             """Send message synchronously with tracing."""
             return cls._trace_send_message(self, original_send_sync, msg, "send_sync", timeout=timeout)
-
-        def traced_send_async(self, msg, callback, timeout=3000):
-            """Send message asynchronously with tracing."""
-            def traced_callback(result):
-                # Log send result in span if available
-                span = getattr(msg, "_tracing_span", None)
-                if span:
-                    if result.status == 0:  # Success
-                        span.set_tag("rocketmq.send_status", "failed")
-                        span.set_tag(tags.ERROR, True)
-                    span.finish()
-
-                # Call original callback
-                if callback:
-                    callback(result)
-
-            return cls._trace_send_message(self, original_send_async, msg, "send_async", callback=traced_callback, timeout=timeout)
 
         def traced_send_oneway(self, msg):
             """Send message oneway with tracing."""
@@ -85,7 +65,6 @@ class RocketMQInstrumentation:
 
         # Replace methods
         producer_class.send_sync = traced_send_sync
-        producer_class.send_async = traced_send_async
         producer_class.send_oneway = traced_send_oneway
 
     @classmethod
@@ -107,7 +86,7 @@ class RocketMQInstrumentation:
         """Trace message sending operations."""
         topic = msg.topic
 
-        if not cls._should_trace_topic(topic):
+        if cls._should_ignore_tracing(topic):
             return original_method(producer, msg, **kwargs)
 
         tracer = initialize_global_tracer()
@@ -116,7 +95,7 @@ class RocketMQInstrumentation:
 
         # Create span for message production
         span = tracer.start_span(
-            operation_name=f"SEND {topic}",
+            operation_name=f"ROCKETMQ",
             child_of=current_span
         )
 
@@ -133,22 +112,10 @@ class RocketMQInstrumentation:
         if hasattr(msg, "keys") and msg.keys:
             span.set_tag("rocketmq.keys", msg.keys)
 
-        # Add message body size
-        if hasattr(msg, "body") and msg.body:
-            body_size = len(msg.body) if isinstance(msg.body, (str, bytes)) else 0
-            span.set_tag("rocketmq.body_size", body_size)
-
-            # Add message body if configured and not too large
-            if config.get("trace_message_body", False):
-                max_size = config.get("max_message_size", 1024)
-                if body_size <= max_size:
-                    body_content = msg.body
-                    if isinstance(body_content, bytes):
-                        try:
-                            body_content = body_content.decode('utf-8')
-                        except UnicodeDecodeError:
-                            body_content = str(body_content)
-                    span.set_tag("rocketmq.body", str(body_content)[:max_size])
+        # Add message body
+        if hasattr(msg, "body") and msg.body and config.get("trace_message_body", False):
+            body_content = msg.body
+            span.set_tag("rocketmq.body", str(body_content))
 
         # Inject tracing context into message properties
         try:
@@ -170,17 +137,8 @@ class RocketMQInstrumentation:
         except Exception as e:
             logger.debug(f"Failed to inject trace context into RocketMQ message: {e}")
 
-        # Store span reference for async operations
-        setattr(msg, "_tracing_span", span)
-
-        start_time = time.time()
-
         try:
             result = original_method(producer, msg, **kwargs)
-
-            # Calculate send duration
-            duration_ms = (time.time() - start_time) * 1000
-            span.set_tag("rocketmq.duration_ms", round(duration_ms, 2))
 
             # For synchronous operations, finish span immediately
             if operation == "send_sync":
@@ -196,7 +154,6 @@ class RocketMQInstrumentation:
             elif operation == "send_oneway":
                 span.set_tag("rocketmq.send_status", "oneway")
                 span.finish()
-            # For async operations, span will be finished in callback
 
             return result
 
@@ -216,7 +173,7 @@ class RocketMQInstrumentation:
         """Trace message consumption."""
         topic = msg.topic
 
-        if not cls._should_trace_topic(topic):
+        if cls._should_ignore_tracing(topic):
             return original_callback(msg)
 
         tracer = initialize_global_tracer()
@@ -235,7 +192,7 @@ class RocketMQInstrumentation:
 
         # Create span for message consumption
         span = tracer.start_span(
-            operation_name=f"RECEIVE {topic}",
+            operation_name=f"ROCKETMQ",
             child_of=parent_context
         )
 
@@ -260,31 +217,15 @@ class RocketMQInstrumentation:
         if hasattr(msg, "born_timestamp"):
             span.set_tag("rocketmq.born_timestamp", msg.born_timestamp)
 
-        # Add message body size and content
-        if hasattr(msg, "body") and msg.body:
-            body_size = len(msg.body) if isinstance(msg.body, (str, bytes)) else 0
-            span.set_tag("rocketmq.body_size", body_size)
-
-            if config.get("trace_message_body", False):
-                max_size = config.get("max_message_size", 1024)
-                if body_size <= max_size:
-                    body_content = msg.body
-                    if isinstance(body_content, bytes):
-                        try:
-                            body_content = body_content.decode('utf-8')
-                        except UnicodeDecodeError:
-                            body_content = str(body_content)
-                    span.set_tag("rocketmq.body", str(body_content)[:max_size])
-
-        start_time = time.time()
+        # Add message body
+        if hasattr(msg, "body") and msg.body and config.get("trace_message_body", False):
+            body_content = msg.body
+            span.set_tag("rocketmq.body", str(body_content))
 
         try:
             with span_in_context(span):
                 result = original_callback(msg)
 
-            # Calculate processing duration
-            duration_ms = (time.time() - start_time) * 1000
-            span.set_tag("rocketmq.processing_duration_ms", round(duration_ms, 2))
             span.set_tag("rocketmq.consume_status", "success")
 
             return result

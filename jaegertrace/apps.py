@@ -10,6 +10,8 @@ class LoggerConfig(AppConfig):
     def ready(self):
         if not getattr(settings, 'TRACING_CONFIG'):
             return
+        if is_component_enabled('http_requests'):
+            HTTPInstrumentation.install()
         if is_component_enabled('database'):
             DatabaseInstrumentation.install()
         if is_component_enabled('redis'):

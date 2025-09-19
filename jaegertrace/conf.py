@@ -47,19 +47,16 @@ DEFAULT_TRACING_CONFIG = {
         "enabled": True,
         "log_command": True,
         "ignore_commands": ["PING", "INFO"],
-        "max_value_length": 500,
+        "max_command_length": 500,
     },
     "celery": {
         "enabled": True,
-        "trace_task_args": False,
-        "trace_result": False,
         "ignore_tasks": [],
     },
     "rocketmq": {
         "enabled": True,
         "trace_message_body": False,
         "ignore_topics": [],
-        "max_message_size": 1024,
     },
 }
 
