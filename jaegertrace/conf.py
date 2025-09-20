@@ -3,8 +3,6 @@
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
 
-settings.configure()
-
 __all__ = [
     "get_tracer_config",
     "get_tracing_config",
