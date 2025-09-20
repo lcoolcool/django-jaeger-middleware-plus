@@ -15,6 +15,8 @@ logger = logging.getLogger(__name__)
 
 class TraceMiddleware(MiddlewareMixin):
     """"use jaeger_client realizing tracing"""
+    sync_capable = True
+    async_capable = False  # TODO async impl
 
     def __init__(self, get_response=None):
         self.get_response = get_response
