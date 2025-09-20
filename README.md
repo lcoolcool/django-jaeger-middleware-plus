@@ -36,7 +36,7 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
-    'django_tracing.middleware.TraceMiddleware',
+    'jaegertrace.middleware.TraceMiddleware',
     # ... other middleware
 ]
 
