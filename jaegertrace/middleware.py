@@ -24,7 +24,7 @@ class TraceMiddleware(MiddlewareMixin):
 
         # Initialize tracer if HTTP tracing is enabled
         if is_component_enabled("http_requests"):
-            from initial_tracer import initialize_global_tracer
+            from .initial_tracer import initialize_global_tracer
             self._tracer = initialize_global_tracer()
 
     def _should_ignore_request(self, request) -> bool:
