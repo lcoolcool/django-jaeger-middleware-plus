@@ -1,6 +1,6 @@
 from django.apps import AppConfig
 from django.conf import settings
-from instrumentation import *
+from .instrumentation import *
 from jaegertrace.conf import is_component_enabled
 
 
