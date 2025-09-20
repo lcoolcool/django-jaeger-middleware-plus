@@ -8,7 +8,7 @@ class LoggerConfig(AppConfig):
     name = 'jaegertrace'
 
     def ready(self):
-        if not getattr(settings, 'TRACING_CONFIG'):
+        if not hasattr(settings, 'TRACING_CONFIG'):
             return
         if is_component_enabled('http_requests'):
             HTTPInstrumentation.install()
