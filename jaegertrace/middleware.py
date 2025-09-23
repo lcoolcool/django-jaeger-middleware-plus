@@ -3,42 +3,92 @@
 import logging
 import urllib
 
-
-from django.utils.deprecation import MiddlewareMixin
+from django.utils.functional import cached_property
 from opentracing import Format
 from opentracing.ext import tags
 from .conf import *
-from .request_context import get_current_span, span_in_context, span_out_context
+from .request_context import span_in_context, span_out_context, get_current_span
 
 logger = logging.getLogger(__name__)
 
 
-class TraceMiddleware(MiddlewareMixin):
+class TraceMiddleware:
     """"use jaeger_client realizing tracing"""
-    sync_capable = True
-    async_capable = False  # TODO async impl
 
     def __init__(self, get_response=None):
         self.get_response = get_response
-        self._tracer = None
-        self._http_config = get_tracing_config().get("http_requests", {})
-        self._tracer_config = get_tracer_config()
 
-        # Initialize tracer if HTTP tracing is enabled
-        if is_component_enabled("http_requests"):
-            from .initial_tracer import initialize_global_tracer
-            self._tracer = initialize_global_tracer()
+        # Initialize tracer
+        self.tracer = self._tracer
 
-    def _should_ignore_request(self, request) -> bool:
+    @cached_property
+    def _tracer(self):
+        from .initial_tracer import initialize_global_tracer
+        return initialize_global_tracer()
+
+    def __call__(self, request):
+        # Ignore check requests
+        if self._should_ignore_request(request):
+            return self.get_response(request)
+
+        # Parse headers and build URL
+        self._parse_wsgi_headers(request)
+        self.full_url(request)
+
+        # Extract parent span context from request headers
+        try:
+            parent_ctx = self.tracer.extract(
+                Format.HTTP_HEADERS,
+                carrier=request.headers
+            )
+        except Exception as e:
+            logger.exception(f'Failed to extract parent context:{e}')
+            parent_ctx = None
+
+        # Create span
+        span = self._gen_span(request, parent_ctx)
+
+        # # Add tracing headers to request
+        if get_tracing_config().get("http_requests", {}).get("trace_headers", True):
+            carrier = {}
+            try:
+                self._tracer.inject(
+                    span_context=span.context,
+                    format=Format.HTTP_HEADERS,
+                    carrier=carrier
+                )
+                for key, value in carrier.items():
+                    request.headers[key] = value
+            except Exception as e:
+                logger.debug(f"Failed to inject tracing headers: {e}")
+
+        # Store span in context
+        span_in_context(span)
+
+        response = self.get_response(request)
+
+        # Add trace-id header to response
+        trace_id_header = get_tracer_config().get("trace_id_header", "trace-id")
+        response[trace_id_header] = span.trace_id
+
+        try:
+            span.set_tag(tags.HTTP_STATUS_CODE, response.status_code)
+        except Exception as e:
+            logger.exception(f'Error setting response tags for tracing:{e}')
+        finally:
+            span.finish()
+            span_out_context()
+
+        return response
+
+    @staticmethod
+    def _should_ignore_request(request) -> bool:
         """
         Check if the request should be ignored based on configuration.
         :param: request:
         :return: True if request should be ignored, False otherwise.
         """
-        if not is_component_enabled("http_requests"):
-            return True
-
-        ignore_urls = self._http_config.get("ignore_urls", [])
+        ignore_urls = get_tracing_config().get("http_requests", {}).get("ignore_urls", [])
         request_path = request.path_info
 
         return any(
@@ -94,37 +144,20 @@ class TraceMiddleware(MiddlewareMixin):
             url += '?' + environ['QUERY_STRING']
         setattr(request, 'full_url', url)
 
-    def process_request(self, request):
+    def _gen_span(self, request, parent_ctx):
         """
-        Process incoming HTTP request and start tracing span.
+        Create a span for the request.
         :param request:
+        :param parent_ctx:
         :return:
         """
-        if self._should_ignore_request(request):
-            return
-
-        # Parse headers and build URL
-        self._parse_wsgi_headers(request)
-        self.full_url(request)
-
-        # Extract parent span context from request headers
-        try:
-            parent_ctx = self._tracer.extract(
-                Format.HTTP_HEADERS,
-                carrier=request.headers
-            )
-        except Exception as e:
-            logger.exception(f'Failed to extract parent context:{e}')
-            parent_ctx = None
-
         operation_name = '{} {}'.format(request.method, request.path)
 
-        # Create standard tags for the request span
         span_tags = {
             tags.SPAN_KIND: tags.SPAN_KIND_RPC_SERVER,
             tags.HTTP_URL: request.full_url,
             tags.HTTP_METHOD: request.method,
-            tags.COMPONENT: get_service_name() or "django"
+            tags.COMPONENT: get_service_name()
         }
 
         remote_ip = request.environ.get('REMOTE_ADDR')
@@ -137,7 +170,7 @@ class TraceMiddleware(MiddlewareMixin):
 
         user_agent = request.META.get("HTTP_USER_AGENT")
         if user_agent:
-            max_length = self._http_config.get("max_tag_value_length", 1024)
+            max_length = get_tracing_config().get("http_requests", {}).get("max_tag_value_length", 1024)
             span_tags["http.user_agent"] = user_agent[:max_length]
 
         span = self._tracer.start_span(
@@ -145,40 +178,27 @@ class TraceMiddleware(MiddlewareMixin):
             child_of=parent_ctx,
             tags=span_tags)
 
-        # # Add tracing headers to request
-        if self._http_config.get("trace_headers", True):
-            carrier = {}
-            try:
-                self._tracer.inject(
-                    span_context=span.context,
-                    format=Format.HTTP_HEADERS,
-                    carrier=carrier
-                )
-                for key, value in carrier.items():
-                    request.headers[key] = value
-            except Exception as e:
-                logger.debug(f"Failed to inject tracing headers: {e}")
+        return span
 
-        # Store span in context
-        span_in_context(span)
 
-    def process_response(self, request, response):
-        span = get_current_span()
-
-        # Add trace-id header to response
-        trace_id_header = self._tracer_config.get("trace_id_header", "trace-id")
-        response[trace_id_header] = request.headers.get(trace_id_header, "")
-
-        if not span:
-            # logger.exception('Can not get valid span for tracing.')
-            return response
+def _tracing_injection(func):
+    def _call(*args, **kwargs):
+        request = args[1]
 
         try:
-            span.set_tag(tags.HTTP_STATUS_CODE, response.status_code)
-        except Exception as e:
-            logger.exception(f'Error setting response tags for tracing:{e}')
-        finally:
-            span.finish()
-            span_out_context()
+            span = get_current_span()
+            if span:
+                trace_id_header = get_tracer_config().get("trace_id_header", "trace-id")
+                request.headers[trace_id_header] = "asdfasdfasd"
+        except Exception:
+            pass
+        trace_id_header = get_tracer_config().get("trace_id_header", "trace-id")
+        request.headers[trace_id_header] = "asdfasdfasd"
+        return func(*args, **kwargs)  # actual call
 
-        return response
+    return _call
+
+
+sys = __import__("sys")
+session = sys.modules['requests.sessions']
+session.Session.prepare_request = _tracing_injection(session.Session.prepare_request)
