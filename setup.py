@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="django-jaeger-middleware-plus",
-    version="0.2.0",
+    version="0.2.1",
     author="zhaishuaishuai",
     author_email="zhaishuaishuai001@gmail.com",
     description="A Django middleware for distributed tracing with Jaeger",

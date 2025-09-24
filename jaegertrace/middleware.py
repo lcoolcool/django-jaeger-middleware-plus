@@ -188,6 +188,6 @@ def _tracing_injection(func):
     return _call
 
 
-sys = __import__("sys")
-session = sys.modules['requests.sessions']
-session.Session.prepare_request = _tracing_injection(session.Session.prepare_request)
+# sys = __import__("sys")
+# session = sys.modules['requests.sessions']
+# session.Session.prepare_request = _tracing_injection(session.Session.prepare_request)

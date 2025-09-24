@@ -15,4 +15,4 @@ class LoggerConfig(AppConfig):
         if is_component_enabled('redis'):
             RedisInstrumentation.install()
         if is_component_enabled('celery'):
-            HTTPInstrumentation.install()
+            CeleryInstrumentation.install()
