@@ -29,32 +29,21 @@ DEFAULT_TRACER_CONFIG = {
 # Default tracing configuration for different components
 DEFAULT_TRACING_CONFIG = {
     "http_requests": {
-        "enabled": True,
-        "trace_headers": True,
-        "ignore_urls": ["/health", "/metrics", "/favicon.ico"],
+        "ignore_urls": [],
         "max_tag_value_length": 1024,
     },
     "database": {
         "enabled": True,
-        "slow_query_threshold": 100,  # milliseconds
-        "log_sql": True,
-        "ignore_sqls": ["SHOW TABLES", "DESCRIBE"],
+        "ignore_sqls": [],
         "max_query_length": 1000,
     },
     "redis": {
         "enabled": True,
-        "log_command": True,
-        "ignore_commands": ["PING", "INFO"],
+        "ignore_commands": [],
         "max_command_length": 500,
     },
     "celery": {
         "enabled": True,
-        "ignore_tasks": [],
-    },
-    "rocketmq": {
-        "enabled": True,
-        "trace_message_body": False,
-        "ignore_topics": [],
     },
 }
 

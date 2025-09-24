@@ -12,7 +12,6 @@ I read Jaeger - Distributed Tracing System on [github](https://github.com/jaeger
 - **Database Query Tracing**: Track Django ORM queries with performance metrics
 - **Redis Operation Tracing**: Monitor Redis commands and operations
 - **Celery Task Tracing**: Distributed tracing across Celery task queues
-- **RocketMQ Message Tracing**: Trace message production and consumption
 - **Configurable Components**: Enable/disable specific tracing components
 - **Performance Monitoring**: Track slow queries, long-running requests, and bottlenecks
 - **Error Tracking**: Automatic error logging and span tagging
@@ -61,7 +60,6 @@ TRACER_CONFIG = {
     "trace_id_header": "trace-id",
     "baggage_header_prefix": "jaeger-",
     "logging": True,
-    "metrics": False,
 }
 ```
 
@@ -72,33 +70,23 @@ TRACER_CONFIG = {
 
 TRACING_CONFIG = {
     "http_requests": {
-        "enabled": True,
-        "trace_headers": True,  # Inject tracing headers
         "ignore_urls": ["/health", "/metrics", "/favicon.ico"],  # URLs to skip
         "max_tag_value_length": 1024,  # Max length for tag values, default 1024
     },
     "database": {
         "enabled": True,
-        "slow_query_threshold": 100,  # Milliseconds
-        "log_sql": True,  # Include SQL in spans
         "ignore_sqls": ["SHOW TABLES", "DESCRIBE"],  # SQL commands to skip, default ["SHOW TABLES", "DESCRIBE"]
         "max_query_length": 1000,  # Truncate long queries, default 1000
     },
     "redis": {
         "enabled": True,
-        "log_command": True,  # Include command in spans
         "ignore_commands": ["PING", "INFO"],  # Redis commands to skip
         "max_command_length": 500,  # Truncate long commands, default 500
     },
     "celery": {
         "enabled": True,
         "ignore_tasks": [],  # Celery tasks to skip
-    },
-    "rocketmq": {
-        "enabled": True,
-        "trace_message_body": False,  # Include message content
-        "ignore_topics": [],  # RocketMQ topics to skip
-    },
+    }
 }
 ```
 

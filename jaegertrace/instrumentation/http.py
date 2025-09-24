@@ -27,9 +27,6 @@ class TracingHTTPAdapter(HTTPAdapter):
 
     def _should_ignore_tracing(self, request) -> bool:
         """Check if request should be traced."""
-        if not is_component_enabled("http_requests"):
-            return True
-
         ignore_urls = self._config.get("ignore_urls", [])
         request_url = request.url
 
@@ -97,9 +94,6 @@ class TracingHTTPAdapter(HTTPAdapter):
 
     def _inject_headers(self, request, span):
         """Inject tracing headers into request."""
-        if not self._config.get("trace_headers", True):
-            return
-
         carrier = {}
         try:
             self._tracer.inject(
@@ -114,26 +108,3 @@ class TracingHTTPAdapter(HTTPAdapter):
 
         except Exception as e:
             logger.debug(f"Failed to inject tracing headers: {e}")
-
-
-class HTTPInstrumentation:
-    """HTTP client instrumentation manager."""
-
-    @staticmethod
-    def install():
-        """Install HTTP client instrumentation."""
-        if not is_component_enabled("http_requests"):
-            return
-
-        # Monkey patch requests Session to use tracing adapter
-        original_session_init = requests.Session.__init__
-
-        def traced_session_init(session_self):
-            original_session_init(session_self)
-            # Add tracing adapter
-            adapter = TracingHTTPAdapter()
-            session_self.mount('http://', adapter)
-            session_self.mount('https://', adapter)
-
-        requests.Session.__init__ = traced_session_init
-        logger.info("HTTP client instrumentation installed")

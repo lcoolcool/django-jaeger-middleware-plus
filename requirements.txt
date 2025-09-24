@@ -4,4 +4,3 @@ opentracing>=2.4.0,<3.0
 requests>=2.25.1,<3.0
 redis>=3.5.3,<5.0
 celery>=5.0.0,<6.0
-rocketmq-client-python>=2.0.0,<3.0

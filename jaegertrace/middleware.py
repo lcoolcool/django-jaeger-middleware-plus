@@ -27,15 +27,12 @@ class TraceMiddleware:
         return initialize_global_tracer()
 
     def __call__(self, request):
-        # Ignore check requests
-        if self._should_ignore_request(request):
+        if self._ignore_request(request):
             return self.get_response(request)
 
-        # Parse headers and build URL
         self._parse_wsgi_headers(request)
         self.full_url(request)
 
-        # Extract parent span context from request headers
         try:
             parent_ctx = self.tracer.extract(
                 Format.HTTP_HEADERS,
@@ -45,29 +42,23 @@ class TraceMiddleware:
             logger.exception(f'Failed to extract parent context:{e}')
             parent_ctx = None
 
-        # Create span
         span = self._gen_span(request, parent_ctx)
-
-        # # Add tracing headers to request
-        if get_tracing_config().get("http_requests", {}).get("trace_headers", True):
-            carrier = {}
-            try:
-                self._tracer.inject(
-                    span_context=span.context,
-                    format=Format.HTTP_HEADERS,
-                    carrier=carrier
-                )
-                for key, value in carrier.items():
-                    request.headers[key] = value
-            except Exception as e:
-                logger.debug(f"Failed to inject tracing headers: {e}")
-
-        # Store span in context
         span_in_context(span)
 
-        response = self.get_response(request)
+        # # Add tracing headers to request
+        carrier = {}
+        try:
+            self._tracer.inject(
+                span_context=span.context,
+                format=Format.HTTP_HEADERS,
+                carrier=carrier
+            )
+            for key, value in carrier.items():
+                request.headers[key] = value
+        except Exception as e:
+            logger.debug(f"Failed to inject tracing headers: {e}")
 
-        # Add trace-id header to response
+        response = self.get_response(request)
         trace_id_header = get_tracer_config().get("trace_id_header", "trace-id")
         response[trace_id_header] = span.trace_id
 
@@ -82,7 +73,7 @@ class TraceMiddleware:
         return response
 
     @staticmethod
-    def _should_ignore_request(request) -> bool:
+    def _ignore_request(request) -> bool:
         """
         Check if the request should be ignored based on configuration.
         :param: request:
@@ -189,11 +180,9 @@ def _tracing_injection(func):
             span = get_current_span()
             if span:
                 trace_id_header = get_tracer_config().get("trace_id_header", "trace-id")
-                request.headers[trace_id_header] = "asdfasdfasd"
+                request.headers[trace_id_header] = span.trace_id
         except Exception:
             pass
-        trace_id_header = get_tracer_config().get("trace_id_header", "trace-id")
-        request.headers[trace_id_header] = "asdfasdfasd"
         return func(*args, **kwargs)  # actual call
 
     return _call

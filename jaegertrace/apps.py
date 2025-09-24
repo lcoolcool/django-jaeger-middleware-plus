@@ -10,13 +10,9 @@ class LoggerConfig(AppConfig):
     def ready(self):
         if not hasattr(settings, 'TRACING_CONFIG'):
             return
-        if is_component_enabled('http_requests'):
-            HTTPInstrumentation.install()
         if is_component_enabled('database'):
             DatabaseInstrumentation.install()
         if is_component_enabled('redis'):
             RedisInstrumentation.install()
         if is_component_enabled('celery'):
             HTTPInstrumentation.install()
-        if is_component_enabled('rocketmq'):
-            RocketMQInstrumentation.install()
