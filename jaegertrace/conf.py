@@ -40,7 +40,6 @@ DEFAULT_TRACING_CONFIG = {
     "redis": {
         "enabled": True,
         "ignore_commands": [],
-        "max_command_length": 500,
     },
     "celery": {
         "enabled": True,

@@ -24,11 +24,11 @@ def db_span_processor(func, span, *args, **kwargs):
 
     # Add SQL statement (optionally truncated)
     max_length = get_tracing_config().get("database", {}).get("max_query_length", 1000)
-    span.set_tag(tags.DATABASE_STATEMENT, args[0][:max_length])
+    span.set_tag(tags.DATABASE_STATEMENT, args[1][:max_length])
 
 
 def db_need_ignore(func, *args, **kwargs):
-    sql = args[0]  # SQL query
+    sql = args[1]  # SQL query
     ignore_sqls = get_tracing_config().get("database", {}).get("ignore_sqls", [])
     return any(
         ignore_sql.upper() in sql.upper()

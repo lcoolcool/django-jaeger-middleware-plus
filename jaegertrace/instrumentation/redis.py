@@ -21,18 +21,16 @@ def redis_span_processor(func, span, *args, **kwargs):
     span.set_tag(tags.SPAN_KIND, tags.SPAN_KIND_RPC_CLIENT)
     span.set_tag(tags.COMPONENT, "redis")
     span.set_tag(tags.DATABASE_TYPE, "redis")
+    span.set_tag(tags.DATABASE_STATEMENT, args[1:])
 
-    # Add SQL statement (optionally truncated)
-    max_length = get_tracing_config().get("database", {}).get("max_query_length", 1000)
-    statement = args[1] + " " + args[2]
-    span.set_tag(logs.MESSAGE, statement[:max_length])
-    span.set_tag(tags.DATABASE_STATEMENT, statement[:max_length])
+    message = args[1] + " " + args[2]
+    span.set_tag(logs.MESSAGE, message)
 
 
 def redis_need_ignore(func, *args, **kwargs):
     ignore_commands = get_tracing_config().get("redis", {}).get("ignore_commands", [])
     return any(
-        ignore_command.upper() in args[0].upper()
+        ignore_command.upper() in args[1].upper()
         for ignore_command in ignore_commands
     )
 

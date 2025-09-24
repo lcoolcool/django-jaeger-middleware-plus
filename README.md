@@ -55,7 +55,7 @@ TRACER_CONFIG = {
     },
     "local_agent": {
         "reporting_host": "localhost",
-        "reporting_port": 6832,
+        "reporting_port": 6831,
     },
     "trace_id_header": "trace-id",
     "baggage_header_prefix": "jaeger-",
