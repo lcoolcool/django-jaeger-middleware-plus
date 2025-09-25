@@ -1,32 +1,26 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-import logging
 import requests
-
-from .conf import is_component_enabled
-from .instrumentation.http import TracingHTTPAdapter
-
-logger = logging.getLogger(__name__)
+from requests.adapters import HTTPAdapter
 
 
 class HttpClient:
     """
     HTTP client with built-in tracing support.
-    Drop-in replacement for requests with automatic tracing.
     """
+    _headers = {
+        'Content-Type': 'application/json',
+    }
 
-    def __init__(self, base_url: str = None, headers: dict = None, timeout: int = 10, retry: int = 0):
+    def __init__(self, base_url: str = None, headers: dict = _headers, timeout: int = 10, retry: int = 0):
         self.base_url = base_url
-        self.default_headers = headers or {}
-        self.timeout = timeout
+        self.default_headers = headers
         self.retry = retry
+        self.timeout = timeout
         self.session = requests.Session()
-
-        # Install tracing adapter
-        if is_component_enabled("http_requests"):
-            adapter = TracingHTTPAdapter(max_retries=self.retry)
-            self.session.mount('http://', adapter)
-            self.session.mount('https://', adapter)
+        adapter = HTTPAdapter(max_retries=self.retry)
+        self.session.mount('http://', adapter)
+        self.session.mount('https://', adapter)
 
     def _prepare_url(self, url: str) -> str:
         """Prepare URL with base URL if needed."""

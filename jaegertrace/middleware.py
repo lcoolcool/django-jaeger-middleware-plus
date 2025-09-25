@@ -4,6 +4,7 @@ import logging
 import urllib
 
 from django.utils.functional import cached_property
+from jaeger_client import codecs
 from opentracing import Format
 from opentracing.ext import tags
 from .conf import *
@@ -179,8 +180,11 @@ def _tracing_injection(func):
         try:
             span = get_current_span()
             if span:
+                trace_id = codecs.span_context_to_string(
+                    trace_id=span.trace_id, span_id=span.span_id,
+                    parent_id=span.parent_id, flags=span.flags)
                 trace_id_header = get_tracer_config().get("trace_id_header", "trace-id")
-                request.headers[trace_id_header] = span.trace_id
+                request.headers[trace_id_header] = trace_id
         except Exception:
             pass
         return func(*args, **kwargs)  # actual call
@@ -188,6 +192,6 @@ def _tracing_injection(func):
     return _call
 
 
-# sys = __import__("sys")
-# session = sys.modules['requests.sessions']
-# session.Session.prepare_request = _tracing_injection(session.Session.prepare_request)
+from requests.sessions import Session
+
+Session.prepare_request = _tracing_injection(Session.prepare_request)

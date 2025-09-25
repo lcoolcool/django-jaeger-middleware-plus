@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="django-jaeger-middleware-plus",
-    version="0.2.3",
+    version="1.0.0",
     author="zhaishuaishuai",
     author_email="zhaishuaishuai001@gmail.com",
     description="A Django middleware for distributed tracing with Jaeger",
@@ -46,7 +46,7 @@ setup(
             "mypy>=0.812",
         ],
     },
-    keywords=["django", "django-jaeger-middleware", "jaeger" "opentracing" "microservice"],
+    keywords=["django-jaeger-middleware", "jaeger" "opentracing" "microservice"],
     project_urls={
         "Bug Reports": "https://github.com/lcoolcool/django-jaeger-middleware-plus/issues",
         "Source": "https://github.com/lcoolcool/django-jaeger-middleware-plus",
